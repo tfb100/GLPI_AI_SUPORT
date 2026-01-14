@@ -70,12 +70,6 @@ class KnowledgeBaseSearcher
         foreach ($iterator as $data) {
             $kb = new KnowbaseItem();
             if ($kb->getFromDB($data['id']) && $kb->canViewItem()) {
-                $results[] = [
-                    'id' => $data['id'],
-                    'title' => $data['name'],
-                    'content' => $this->extractRelevantContent($data['answer'], $keywords),
-                    'full_content' => $data['answer'],
-                    'views' => $data['view'],
                 $relevance = $this->calculateRelevance($data, $keywords);
                 $results[] = [
                     'id' => $data['id'],
@@ -137,12 +131,6 @@ class KnowledgeBaseSearcher
         foreach ($iterator as $data) {
             $kb = new KnowbaseItem();
             if ($kb->getFromDB($data['id']) && $kb->canViewItem()) {
-                $results[] = [
-                    'id' => $data['id'],
-                    'title' => $data['name'],
-                    'content' => $this->extractRelevantContent($data['answer'], $keywords),
-                    'full_content' => $data['answer'],
-                    'views' => $data['view'],
                 $relevance = $this->calculateRelevance($data, $keywords);
                 $results[] = [
                     'id' => $data['id'],
