@@ -22,7 +22,7 @@ use Toolbox;
 /**
  * Cliente para integração com Google Gemini API
  */
-class GeminiClient
+class GeminiClient implements AIClientInterface
 {
     /** @var string */
     private $apiKey;

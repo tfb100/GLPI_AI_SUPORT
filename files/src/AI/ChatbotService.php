@@ -24,8 +24,8 @@ use Toolbox;
  */
 class ChatbotService
 {
-    /** @var GeminiClient */
-    private $geminiClient;
+    /** @var AIClientInterface */
+    private $aiClient;
 
     /** @var TicketAnalyzer */
     private $ticketAnalyzer;
@@ -47,10 +47,19 @@ class ChatbotService
      */
     public function __construct(int $ticketId, int $userId = null)
     {
+        global $CFG_GLPI;
+
         $this->ticketId = $ticketId;
         $this->userId = $userId ?? Session::getLoginUserID();
         
-        $this->geminiClient = new GeminiClient();
+        $provider = $CFG_GLPI['chatbot_provider'] ?? 'gemini';
+        
+        if ($provider === 'ollama') {
+            $this->aiClient = new OllamaClient();
+        } else {
+            $this->aiClient = new GeminiClient();
+        }
+
         $this->kbSearcher = new KnowledgeBaseSearcher();
     }
 
@@ -87,11 +96,11 @@ class ChatbotService
             5
         );
 
-        // Gerar análise com Gemini
+        // Gerar análise com AI
         $prompt = $this->buildAnalysisPrompt($context, $faqs);
         
         try {
-            $geminiResponse = $this->geminiClient->generateContent($prompt);
+            $aiResponse = $this->aiClient->generateContent($prompt);
             
             // Salvar no histórico
             $this->saveConversation(
@@ -100,14 +109,14 @@ class ChatbotService
             );
             
             $this->saveConversation(
-                $geminiResponse['text'],
+                $aiResponse['text'],
                 true,
                 $faqs
             );
 
             return [
                 'success' => true,
-                'analysis' => $geminiResponse['text'],
+                'analysis' => $aiResponse['text'],
                 'suggested_faqs' => $faqs,
                 'context' => [
                     'title' => $context['title'],
@@ -157,18 +166,18 @@ class ChatbotService
         $prompt = $this->buildChatPrompt($message, $history, $faqs);
 
         try {
-            $geminiResponse = $this->geminiClient->generateContent($prompt);
+            $aiResponse = $this->aiClient->generateContent($prompt);
             
             // Salvar resposta do bot
             $this->saveConversation(
-                $geminiResponse['text'],
+                $aiResponse['text'],
                 true,
                 $faqs
             );
 
             return [
                 'success' => true,
-                'response' => $geminiResponse['text'],
+                'response' => $aiResponse['text'],
                 'suggested_faqs' => $faqs
             ];
 
@@ -380,6 +389,17 @@ class ChatbotService
     public static function isEnabled(): bool
     {
         global $CFG_GLPI;
-        return !empty($CFG_GLPI['chatbot_enabled']) && !empty($CFG_GLPI['gemini_api_key']);
+        
+        if (empty($CFG_GLPI['chatbot_enabled'])) {
+            return false;
+        }
+
+        $provider = $CFG_GLPI['chatbot_provider'] ?? 'gemini';
+        
+        if ($provider === 'ollama') {
+            return !empty($CFG_GLPI['ollama_host']);
+        }
+        
+        return !empty($CFG_GLPI['gemini_api_key']);
     }
 }

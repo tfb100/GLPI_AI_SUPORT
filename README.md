@@ -22,7 +22,15 @@ Este pacote instala a integração do Chatbot com IA (Gemini) no seu GLPI.
     *   Adicione sua chave de API do Gemini no arquivo `inc/config.php` ou `config_db.php` (ou onde você gerencia configurações globais):
     ```php
     $CFG_GLPI['chatbot_enabled'] = true;
+    
+    // Opção 1: Google Gemini (Padrão)
+    $CFG_GLPI['chatbot_provider'] = 'gemini';
     $CFG_GLPI['gemini_api_key'] = 'SUA_CHAVE_AQUI';
+
+    // Opção 2: Ollama (Local)
+    // $CFG_GLPI['chatbot_provider'] = 'ollama';
+    // $CFG_GLPI['ollama_host'] = 'http://localhost:11434';
+    // $CFG_GLPI['ollama_model'] = 'llama3';
     ```
 6.  **Limpeza:** Após a instalação, **remova** a pasta `glpi-chatbot-installer` do seu servidor por segurança.
 

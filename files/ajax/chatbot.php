@@ -236,22 +236,30 @@ function handleTestConnection()
         ]);
         return;
     }
-
-    $gemini = new \Glpi\AI\GeminiClient();
     
-    if (!$gemini->isConfigured()) {
+    global $CFG_GLPI;
+    $provider = $CFG_GLPI['chatbot_provider'] ?? 'gemini';
+    $client = null;
+    
+    if ($provider === 'ollama') {
+        $client = new \Glpi\AI\OllamaClient();
+    } else {
+        $client = new \Glpi\AI\GeminiClient();
+    }
+    
+    if (!$client->isConfigured()) {
         echo json_encode([
             'success' => false,
-            'error' => 'API key não configurada'
+            'error' => 'Provedor (' . ucfirst($provider) . ') não configurado corretamente'
         ]);
         return;
     }
 
-    $success = $gemini->testConnection();
+    $success = $client->testConnection();
     
     echo json_encode([
         'success' => $success,
-        'message' => $success ? 'Conexão bem-sucedida!' : 'Falha na conexão. Verifique a API key.'
+        'message' => $success ? 'Conexão com ' . ucfirst($provider) . ' bem-sucedida!' : 'Falha na conexão com ' . ucfirst($provider)
     ]);
 }
 

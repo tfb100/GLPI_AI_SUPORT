@@ -29,6 +29,8 @@ echo "<h2>1. Copying Files...</h2>";
 $files = [
     'files/src/AI/ChatbotService.php'       => 'src/AI/ChatbotService.php',
     'files/src/AI/GeminiClient.php'         => 'src/AI/GeminiClient.php',
+    'files/src/AI/OllamaClient.php'         => 'src/AI/OllamaClient.php',
+    'files/src/AI/AIClientInterface.php'    => 'src/AI/AIClientInterface.php',
     'files/src/AI/KnowledgeBaseSearcher.php'=> 'src/AI/KnowledgeBaseSearcher.php',
     'files/src/AI/TicketAnalyzer.php'       => 'src/AI/TicketAnalyzer.php',
     'files/ajax/chatbot.php'                => 'ajax/chatbot.php',
