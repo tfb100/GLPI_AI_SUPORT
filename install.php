@@ -36,6 +36,8 @@ $files = [
     'files/ajax/chatbot.php'                => 'ajax/chatbot.php',
     'files/js/chatbot.js'                   => 'js/chatbot.js',
     'files/css/chatbot.css'                 => 'css/chatbot.css',
+    'files/front/dashboard_contracts.php'   => 'front/dashboard_contracts.php',
+    'files/css/dashboard_contracts.css'     => 'css/dashboard_contracts.css',
 ];
 
 foreach ($files as $src => $dest) {
@@ -133,9 +135,11 @@ if (strpos($content, 'ChatbotService::isEnabled()') !== false) {
              "        \$ticket_check = new Ticket();\n" .
              "        if (\$ticket_check->getFromDB(\$ticket_id) && \$ticket_check->canViewItem()) {\n" .
              "            // Adicionar CSS e JS nas opções de after_display\n" .
+             "            // Adicionando timestamp para evitar cache\n" .
+             "            \$ver = time();\n" .
              "            \$chatbot_html = '';\n" .
-             "            \$chatbot_html .= '<link rel=\"stylesheet\" href=\"' . \$CFG_GLPI['root_doc'] . '/css/chatbot.css\">';\n" .
-             "            \$chatbot_html .= '<script src=\"' . \$CFG_GLPI['root_doc'] . '/js/chatbot.js\"></script>';\n" .
+             "            \$chatbot_html .= '<link rel=\"stylesheet\" href=\"' . \$CFG_GLPI['root_doc'] . '/css/chatbot.css?v=' . \$ver . '\">';\n" .
+             "            \$chatbot_html .= '<script src=\"' . \$CFG_GLPI['root_doc'] . '/js/chatbot.js?v=' . \$ver . '\"></script>';\n" .
              "            \$chatbot_html .= '<script>\n" .
              "                $(document).ready(function() {\n" .
              "                    if (typeof GLPIChatbot !== \"undefined\") {\n" .
