@@ -94,12 +94,26 @@ class ChatbotService
         $this->ticketAnalyzer = new TicketAnalyzer($ticket);
         $context = $this->ticketAnalyzer->extractContext();
 
+        // Definir threshold de relevância
+        // Título match = 10pts, Conteúdo match = 2pts each
+        // Threshold 12 garante pelo menos um match de título e um de conteúdo, 
+        // ou 6 matches de conteúdo.
+        $relevanceThreshold = 12.0;
+
         // Buscar FAQs relevantes
-        $faqs = $this->kbSearcher->searchCombined(
+        $allFaqs = $this->kbSearcher->searchCombined(
             $context['keywords'],
             $context['category']['id'] ?? 0,
-            5
+            10 // Buscar mais candidatos para filtrar
         );
+
+        // Filtrar por relevância
+        $faqs = array_filter($allFaqs, function($faq) use ($relevanceThreshold) {
+            return isset($faq['relevance']) && $faq['relevance'] >= $relevanceThreshold;
+        });
+
+        // Limitar aos top 5 após filtro
+        $faqs = array_slice($faqs, 0, 5);
 
         // Gerar análise com AI
         $prompt = $this->buildAnalysisPrompt($context, $faqs);
@@ -241,7 +255,10 @@ class ChatbotService
         $prompt .= "Forneça uma análise estruturada e profissional:\n\n";
         $prompt .= "1. **Resumo do Problema**: Identifique claramente o problema principal\n";
         $prompt .= "2. **Possíveis Causas**: Liste as causas mais prováveis\n";
-        $prompt .= "3. **Soluções Recomendadas**: Forneça soluções práticas (referencie as FAQs quando aplicável)\n";
+        $prompt .= "3. **Soluções Recomendadas**: Forneça soluções práticas e passo-a-passo.\n";
+        $prompt .= "   IMPORTANTE: Avalie criticamente as FAQs fornecidas acima. Use-as APENAS se forem DIRETAMENTE relevantes ao problema.\n";
+        $prompt .= "   - Se uma FAQ for útil, cite-a explicitamente.\n";
+        $prompt .= "   - Se nenhuma FAQ for realmente relevante, afirme: 'Não há registro de FAQ sobre o assunto na base de conhecimento' e forneça sua própria solução técnica baseada em melhores práticas.\n";
         $prompt .= "4. **Próximos Passos**: Ações específicas que o técnico deve tomar\n\n";
         $prompt .= "Seja objetivo, técnico e baseado em boas práticas de ITIL.";
 

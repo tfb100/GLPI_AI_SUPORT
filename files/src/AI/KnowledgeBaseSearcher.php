@@ -95,9 +95,10 @@ class KnowledgeBaseSearcher
      *
      * @param int $categoryId ID da categoria
      * @param int $limit Número máximo de resultados
+     * @param array $keywords Palavras-chave para cálculo de relevância (opcional)
      * @return array
      */
-    public function searchByCategory(int $categoryId, int $limit = 5): array
+    public function searchByCategory(int $categoryId, int $limit = 5, array $keywords = []): array
     {
         global $DB;
 
@@ -131,12 +132,20 @@ class KnowledgeBaseSearcher
                 $results[] = [
                     'id' => $data['id'],
                     'title' => $data['name'],
-                    'content' => substr(strip_tags($data['answer']), 0, 300) . '...',
+                    'content' => $this->extractRelevantContent($data['answer'], $keywords),
                     'full_content' => $data['answer'],
                     'views' => $data['view'],
+                    'relevance' => $this->calculateRelevance($data, $keywords),
                     'url' => KnowbaseItem::getFormURLWithID($data['id'])
                 ];
             }
+        }
+        
+        // Ordenar por relevância se houver palavras-chave
+        if (!empty($keywords)) {
+            usort($results, function($a, $b) {
+                return $b['relevance'] <=> $a['relevance'];
+            });
         }
 
         return $results;
@@ -155,7 +164,8 @@ class KnowledgeBaseSearcher
         $keywordResults = $this->searchByKeywords($keywords, $limit);
         
         if ($categoryId > 0) {
-            $categoryResults = $this->searchByCategory($categoryId, $limit);
+            // Passar keywords para calcular relevância também nos itens da categoria
+            $categoryResults = $this->searchByCategory($categoryId, $limit, $keywords);
             
             // Mesclar resultados, removendo duplicatas
             $merged = $keywordResults;
@@ -166,6 +176,11 @@ class KnowledgeBaseSearcher
                     $merged[] = $result;
                 }
             }
+            
+            // Reordenar tudo por relevância
+            usort($merged, function($a, $b) {
+                return $b['relevance'] <=> $a['relevance'];
+            });
             
             return array_slice($merged, 0, $limit);
         }
