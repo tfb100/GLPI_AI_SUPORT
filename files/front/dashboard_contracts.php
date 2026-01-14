@@ -82,21 +82,27 @@ $iterator = $DB->request($query);
                         // Determinar Status e Cor
                         $statusClass = '';
                         $statusText = '';
+                        $rowClass = '';
                         
                         if ($daysRemaining < 0) {
                             $statusClass = 'status-expired';
+                            $rowClass = 'tr-status-expired';
                             $statusText = 'VENCIDO';
                         } elseif ($daysRemaining <= 7) {
-                            $statusClass = 'status-expired';
+                            $statusClass = 'status-expired'; // Badge stays red/expired style for critical
+                            $rowClass = 'tr-status-expired';
                             $statusText = 'CRÍTICO (< 7 dias)';
                         } elseif ($daysRemaining <= 30) {
                             $statusClass = 'status-critical';
+                            $rowClass = 'tr-status-critical';
                             $statusText = 'ATENÇÃO (< 30 dias)';
                         } elseif ($daysRemaining <= 90) {
                             $statusClass = 'status-warning';
+                            $rowClass = 'tr-status-warning';
                             $statusText = 'ALERTA (< 90 dias)';
                         } else {
                             $statusClass = 'status-good';
+                            $rowClass = 'tr-status-good';
                             $statusText = 'VIGENTE';
                         }
                         
@@ -107,7 +113,7 @@ $iterator = $DB->request($query);
                         // Link para o contrato
                         $link = Contract::getFormURLWithID($data['id']);
                         
-                        echo "<tr>";
+                        echo "<tr class='{$rowClass}'>";
                         echo "<td><a href='{$link}' class='contract-link'>{$data['name']}</a></td>";
                         echo "<td>" . ($data['type_name'] ?? '-') . "</td>";
                         echo "<td>{$beginDateFmt}</td>";

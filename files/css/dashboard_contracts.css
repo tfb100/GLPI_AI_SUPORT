@@ -1,28 +1,29 @@
 /* Dashboard Container */
 .dashboard-container {
-    padding: 20px;
-    background-color: #f5f7fa;
-    min-height: calc(100vh - 150px);
+    padding: 30px;
+    background-color: #f0f2f5;
+    min-height: calc(100vh - 100px);
 }
 
 .dashboard-title {
-    font-size: 24px;
+    font-size: 42px;
+    /* Much larger for TV */
     color: #2c3e50;
-    margin-bottom: 20px;
+    margin-bottom: 30px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-weight: 600;
+    gap: 15px;
+    font-weight: 700;
 }
 
 .dashboard-card {
     background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     overflow: hidden;
 }
 
-/* Table Styles */
+/* Table Styles - Optimized for TV */
 .dashboard-table {
     width: 100%;
     border-collapse: collapse;
@@ -30,22 +31,26 @@
 }
 
 .dashboard-table th {
-    background-color: #f8f9fa;
-    color: #555;
-    font-weight: 600;
+    background-color: #f1f3f5;
+    color: #495057;
+    font-weight: 700;
     text-transform: uppercase;
-    font-size: 12px;
-    padding: 15px;
+    font-size: 20px;
+    /* Larger headers */
+    padding: 20px 25px;
     text-align: left;
-    border-bottom: 2px solid #e9ecef;
+    border-bottom: 3px solid #dee2e6;
 }
 
 .dashboard-table td {
-    padding: 15px;
+    padding: 24px 25px;
+    /* More padding */
     border-bottom: 1px solid #e9ecef;
-    color: #333;
-    font-size: 14px;
+    color: #212529;
+    font-size: 26px;
+    /* High legibility font */
     vertical-align: middle;
+    font-weight: 500;
 }
 
 .dashboard-table tr:hover {
@@ -56,61 +61,100 @@
     border-bottom: none;
 }
 
-/* Badges */
+/* Badges - Big and Bold */
 .badge-status {
     display: inline-block;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 700;
+    padding: 10px 20px;
+    border-radius: 50px;
+    font-size: 20px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .status-expired {
     /* Vermelho */
     background-color: #ffebee;
-    color: #c62828;
-    border: 1px solid #ffcdd2;
+    color: #d32f2f;
+    border: 2px solid #ffcdd2;
 }
 
 .status-critical {
     /* Laranja */
     background-color: #fff3e0;
-    color: #ef6c00;
-    border: 1px solid #ffe0b2;
+    color: #e65100;
+    border: 2px solid #ffe0b2;
 }
 
 .status-warning {
     /* Amarelo */
     background-color: #fffde7;
-    color: #fbc02d;
-    border: 1px solid #fff9c4;
+    color: #f9a825;
+    border: 2px solid #fff9c4;
 }
 
 .status-good {
     /* Verde */
     background-color: #e8f5e9;
-    color: #2e7d32;
-    border: 1px solid #c8e6c9;
+    color: #1b5e20;
+    border: 2px solid #c8e6c9;
 }
 
 /* Links */
 .contract-link {
-    color: #3498db;
+    color: #1976d2;
     text-decoration: none;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 28px;
+    /* High contrast link */
 }
 
 .contract-link:hover {
     text-decoration: underline;
+    color: #0d47a1;
 }
 
 .desc-text {
-    color: #666;
-    font-size: 12px;
-    max-width: 300px;
+    color: #546e7a;
+    font-size: 20px;
+    max-width: 400px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Row Backgrounds */
+.tr-status-expired {
+    background-color: #ffebee !important;
+    /* Forces color over stripe/hover if needed */
+}
+
+.tr-status-critical {
+    background-color: #fff3e0 !important;
+}
+
+.tr-status-warning {
+    background-color: #fffde7 !important;
+}
+
+.tr-status-good {
+    background-color: #e8f5e9 !important;
+}
+
+/* Adjust hover to be slightly darker version of the status color */
+.tr-status-expired:hover {
+    background-color: #ffcdd2 !important;
+}
+
+.tr-status-critical:hover {
+    background-color: #ffe0b2 !important;
+}
+
+.tr-status-warning:hover {
+    background-color: #fff9c4 !important;
+}
+
+.tr-status-good:hover {
+    background-color: #c8e6c9 !important;
 }
