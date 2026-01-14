@@ -258,7 +258,7 @@ class ChatbotService
         $prompt .= "2. **Análise de Causas**: Liste possíveis causas baseadas na descrição.\n";
         $prompt .= "3. **Solução (Restrita)**:\n";
         $prompt .= "   - Se as fontes acima contiverem a solução: Explique a solução citando a Fonte X e sua relevância.\n";
-        $prompt .= "   - Se as fontes NÃO forem suficientes ou irrelevantes: Responda EXATAMENTE: 'Não encontrei uma solução específica na Base de Conhecimento para este caso. Recomendo análise manual de um técnico nível 2.'\n";
+        $prompt .= "   - Se as fontes NÃO forem suficientes ou irrelevantes: Responda EXATAMENTE: 'Não encontrei uma solução específica na Base de Conhecimento para este caso. Recomendo análise manual de um técnico nível 2. **Sugestão:** Após resolver este chamado, crie uma FAQ na base de conhecimento para que eu possa aprender e ajudar na próxima vez!'\n";
         $prompt .= "   - NÃO invente soluções que não estejam nas fontes.\n";
         $prompt .= "4. **Próximos Passos**: Instruções para triagem.\n";
         $prompt .= "Seja objetivo, técnico e baseado em boas práticas de ITIL.";
@@ -307,7 +307,7 @@ class ChatbotService
         $prompt .= "DIRETRIZES ESTRITAS:\n";
         $prompt .= "1. Use APENAS as informações das Fontes acima para sugerir soluções.\n";
         $prompt .= "2. Se a resposta estiver nas fontes, cite qual fonte usou e sua relevância.\n";
-        $prompt .= "3. Se as fontes não tiverem a resposta, diga: 'Desculpe, não encontrei informações sobre isso na Base de Conhecimento.'\n";
+        $prompt .= "3. Se as fontes não tiverem a resposta, diga: 'Desculpe, não encontrei informações sobre isso na Base de Conhecimento. Sugiro que, ao encontrar a solução, crie uma nova FAQ para enriquecer nossa base e me ajudar no futuro.'\n";
         $prompt .= "4. Não invente procedimentos técnicos que não estejam nas fontes.";
 
         return $prompt;

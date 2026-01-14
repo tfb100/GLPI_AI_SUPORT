@@ -360,11 +360,18 @@ var GLPIChatbot = (function () {
         var html = '<div class="chatbot-faqs"><div class="chatbot-faqs-title"><i class="fas fa-book"></i> FAQs Relacionadas:</div><ul>';
 
         faqs.forEach(function (faq) {
+            var scoreClass = '';
+            if (faq.score) {
+                if (faq.score >= 70) scoreClass = 'chatbot-faq-score-high';
+                else if (faq.score >= 40) scoreClass = 'chatbot-faq-score-medium';
+                else scoreClass = 'chatbot-faq-score-low';
+            }
+
             html += `
                 <li>
                     <a href="${faq.url}" class="chatbot-faq-link" target="_blank">
                         <i class="fas fa-external-link-alt"></i> ${faq.title}
-                        ${faq.score ? `<span class="chatbot-faq-score" title="Relevância">${faq.score}%</span>` : ''}
+                        ${faq.score ? `<span class="chatbot-faq-score ${scoreClass}" title="Relevância">${faq.score}%</span>` : ''}
                     </a>
                     <div class="chatbot-faq-excerpt">${faq.content}</div>
                 </li>
