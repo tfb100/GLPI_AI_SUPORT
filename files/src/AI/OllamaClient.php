@@ -83,6 +83,18 @@ class OllamaClient implements AIClientInterface
             ];
 
         } catch (GuzzleException $e) {
+            // Check for 404 (Model not found)
+            if ($e->getCode() == 404) {
+                // Try to get response body for specific error
+                $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : '';
+                $errorData = json_decode($responseBody, true);
+                
+                if (isset($errorData['error']) && strpos($errorData['error'], 'not found') !== false) {
+                    Toolbox::logError('Ollama Model Not Found: ' . $this->model);
+                    throw new \RuntimeException("Modelo '{$this->model}' não encontrado no Ollama. Execute 'ollama pull {$this->model}' no servidor.");
+                }
+            }
+            
             Toolbox::logError('Erro ao chamar Ollama API: ' . $e->getMessage());
             throw new \RuntimeException('Erro ao comunicar com Ollama: ' . $e->getMessage());
         }

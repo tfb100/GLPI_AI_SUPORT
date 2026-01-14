@@ -148,7 +148,7 @@ var GLPIChatbot = (function () {
         });
 
         // Load saved provider
-        const savedProvider = localStorage.getItem('glpi_chatbot_provider') || 'gemini';
+        const savedProvider = localStorage.getItem('glpi_chatbot_provider') || 'ollama';
         $('#chatbot-provider-select').val(savedProvider);
 
         // Save provider on change

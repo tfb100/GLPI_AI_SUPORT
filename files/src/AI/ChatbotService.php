@@ -115,6 +115,21 @@ class ChatbotService
         // Limitar aos top 5 após filtro
         $faqs = array_slice($faqs, 0, 5);
 
+        // Validar Configuração do Gemini
+        if ($this->aiClient instanceof GeminiClient && !$this->aiClient->isConfigured()) {
+            return [
+                'success' => true, // Return success to show message as bot response
+                'analysis' => '⚠️ **Atenção:** Configure a Chave de API do Gemini para utilizar este provedor.',
+                'suggested_faqs' => $faqs,
+                'context' => [
+                   'title' => $context['title'],
+                   'category' => $context['category']['name'],
+                   'priority' => $context['priority'],
+                   'symptoms' => $context['symptoms']
+                ]
+            ];
+        }
+
         // Gerar análise com AI
         $prompt = $this->buildAnalysisPrompt($context, $faqs);
         
@@ -183,6 +198,15 @@ class ChatbotService
 
         // Construir prompt com contexto
         $prompt = $this->buildChatPrompt($message, $history, $faqs);
+
+        // Validar Configuração do Gemini
+        if ($this->aiClient instanceof GeminiClient && !$this->aiClient->isConfigured()) {
+            return [
+                'success' => true,
+                'response' => '⚠️ **Atenção:** Configure a Chave de API do Gemini para utilizar este provedor.',
+                'suggested_faqs' => $faqs
+            ];
+        }
 
         try {
             $aiResponse = $this->aiClient->generateContent($prompt);
