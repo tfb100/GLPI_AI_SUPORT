@@ -64,6 +64,11 @@ var GLPIChatbot = (function () {
                         <span>Assistente IA</span>
                     </div>
                     <div class="chatbot-header-actions">
+                        <!-- Settings Button -->
+                        <button class="chatbot-header-btn" id="chatbot-settings-btn" title="Configurações">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <!-- Analyze Button -->
                         <button id="chatbot-analyze-header-btn" class="chatbot-header-btn" title="Analisar Chamado">
                             <i class="fas fa-magic"></i>
                         </button>
@@ -72,6 +77,19 @@ var GLPIChatbot = (function () {
                         </button>
                     </div>
                 </div>
+                
+                <!-- Settings Panel -->
+                <div class="chatbot-settings-panel" style="display: none;">
+                    <h4>Configurações de IA</h4>
+                    <div class="chatbot-setting-item">
+                        <label for="chatbot-provider-select">Provedor:</label>
+                        <select id="chatbot-provider-select">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="ollama">Ollama (Local)</option>
+                        </select>
+                    </div>
+                </div>
+
                     
                     <div class="chatbot-messages" id="chatbot-messages">
                         <div class="chatbot-welcome">
@@ -115,6 +133,29 @@ var GLPIChatbot = (function () {
         // Toggle chatbot
         elements.toggle.on('click', toggleChatbot);
         $('.chatbot-close').on('click', toggleChatbot);
+
+        // Settings Toggle
+        $(document).on('click', '#chatbot-settings-btn', function (e) {
+            e.stopPropagation();
+            $('.chatbot-settings-panel').fadeToggle(200);
+        });
+
+        // Close settings when clicking outside
+        $(document).on('click', function (e) {
+            if (!$(e.target).closest('.chatbot-settings-panel, #chatbot-settings-btn').length) {
+                $('.chatbot-settings-panel').fadeOut(200);
+            }
+        });
+
+        // Load saved provider
+        const savedProvider = localStorage.getItem('glpi_chatbot_provider') || 'gemini';
+        $('#chatbot-provider-select').val(savedProvider);
+
+        // Save provider on change
+        $(document).on('change', '#chatbot-provider-select', function () {
+            const provider = $(this).val();
+            localStorage.setItem('glpi_chatbot_provider', provider);
+        });
 
         // Enviar mensagem
         elements.sendBtn.on('click', sendMessage);
@@ -184,6 +225,7 @@ var GLPIChatbot = (function () {
             data: {
                 action: 'analyze',
                 ticket_id: config.ticketId,
+                provider: $('#chatbot-provider-select').val() || 'gemini',
                 _glpi_csrf_token: csrfToken
             },
             dataType: 'json',
@@ -245,6 +287,7 @@ var GLPIChatbot = (function () {
                 action: 'chat',
                 ticket_id: config.ticketId,
                 message: message,
+                provider: $('#chatbot-provider-select').val() || 'gemini',
                 _glpi_csrf_token: csrfToken
             },
             dataType: 'json',

@@ -44,19 +44,24 @@ class ChatbotService
      *
      * @param int $ticketId
      * @param int $userId
+     * @param string|null $provider 'gemini' or 'ollama' (optional)
      */
-    public function __construct(int $ticketId, int $userId = null)
+    public function __construct(int $ticketId, int $userId = null, string $provider = null)
     {
         global $CFG_GLPI;
 
         $this->ticketId = $ticketId;
         $this->userId = $userId ?? Session::getLoginUserID();
         
-        $provider = $CFG_GLPI['chatbot_provider'] ?? 'gemini';
+        // If no provider specified, verify if specific preferred provider is set in session or use config
+        if (empty($provider)) {
+            $provider = $CFG_GLPI['chatbot_provider'] ?? 'gemini';
+        }
         
         if ($provider === 'ollama') {
             $this->aiClient = new OllamaClient();
         } else {
+            // Default to Gemini
             $this->aiClient = new GeminiClient();
         }
 

@@ -467,4 +467,51 @@
         bottom: 10px;
         right: 10px;
     }
-}
+
+    /* Settings Panel */
+    .chatbot-settings-panel {
+        position: absolute;
+        top: 60px;
+        right: 10px;
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        z-index: 10001;
+        width: 250px;
+        border: 1px solid #ddd;
+    }
+
+    .chatbot-settings-panel h4 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        font-size: 14px;
+        color: #333;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+    }
+
+    .chatbot-setting-item {
+        margin-bottom: 10px;
+    }
+
+    .chatbot-setting-item label {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 12px;
+        color: #666;
+    }
+
+    .chatbot-setting-item select {
+        width: 100%;
+        padding: 8px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        font-size: 13px;
+    }
+
+    /* Adjust header actions to accommodate new button */
+    .chatbot-header-actions {
+        display: flex;
+        gap: 8px;
+    }
