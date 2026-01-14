@@ -38,7 +38,7 @@ $CFG_GLPI['chatbot_provider'] = 'ollama';
 // =========================================
 // $CFG_GLPI['chatbot_provider'] = 'ollama'; // Default provider (ignored if dynamic switching matches valid config)
 $CFG_GLPI['ollama_host'] = 'http://localhost:11434';
-$CFG_GLPI['ollama_model'] = 'llama3';
+$CFG_GLPI['ollama_model'] = 'deepseek-r1:8b';
 
 
 // Número máximo de sugestões de FAQ
