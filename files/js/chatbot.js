@@ -364,6 +364,7 @@ var GLPIChatbot = (function () {
                 <li>
                     <a href="${faq.url}" class="chatbot-faq-link" target="_blank">
                         <i class="fas fa-external-link-alt"></i> ${faq.title}
+                        ${faq.score ? `<span class="chatbot-faq-score" title="Relevância">${faq.score}%</span>` : ''}
                     </a>
                     <div class="chatbot-faq-excerpt">${faq.content}</div>
                 </li>

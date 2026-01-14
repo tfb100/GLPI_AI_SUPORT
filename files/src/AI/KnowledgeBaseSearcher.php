@@ -76,7 +76,15 @@ class KnowledgeBaseSearcher
                     'content' => $this->extractRelevantContent($data['answer'], $keywords),
                     'full_content' => $data['answer'],
                     'views' => $data['view'],
-                    'relevance' => $this->calculateRelevance($data, $keywords),
+                $relevance = $this->calculateRelevance($data, $keywords);
+                $results[] = [
+                    'id' => $data['id'],
+                    'title' => $data['name'],
+                    'content' => $this->extractRelevantContent($data['answer'], $keywords),
+                    'full_content' => $data['answer'],
+                    'views' => $data['view'],
+                    'relevance' => $relevance,
+                    'score' => $this->calculateConfidence($relevance, count($keywords)),
                     'url' => KnowbaseItem::getFormURLWithID($data['id'])
                 ];
             }
@@ -135,7 +143,15 @@ class KnowledgeBaseSearcher
                     'content' => $this->extractRelevantContent($data['answer'], $keywords),
                     'full_content' => $data['answer'],
                     'views' => $data['view'],
-                    'relevance' => $this->calculateRelevance($data, $keywords),
+                $relevance = $this->calculateRelevance($data, $keywords);
+                $results[] = [
+                    'id' => $data['id'],
+                    'title' => $data['name'],
+                    'content' => $this->extractRelevantContent($data['answer'], $keywords),
+                    'full_content' => $data['answer'],
+                    'views' => $data['view'],
+                    'relevance' => $relevance,
+                    'score' => $this->calculateConfidence($relevance, count($keywords)),
                     'url' => KnowbaseItem::getFormURLWithID($data['id'])
                 ];
             }
@@ -229,8 +245,7 @@ class KnowledgeBaseSearcher
     private function calculateRelevance(array $data, array $keywords): float
     {
         $score = 0;
-        $text = strtolower($data['name'] . ' ' . $data['answer']);
-
+        
         foreach ($keywords as $keyword) {
             $keyword = strtolower($keyword);
             
@@ -244,9 +259,33 @@ class KnowledgeBaseSearcher
         }
 
         // Bônus por popularidade (views)
-        $score += log($data['view'] + 1) * 0.5;
+        // Log suaviza o impacto de muitas views
+        $score += log((int)$data['view'] + 1) * 0.5;
 
         return $score;
+    }
+
+    /**
+     * Calcula a porcentagem de relevância
+     *
+     * @param float $score
+     * @param int $keywordCount
+     * @return int
+     */
+    private function calculateConfidence(float $score, int $keywordCount): int
+    {
+        if ($keywordCount === 0) return 0;
+        
+        // Placar ideal: 1 match de título por keyword (10 pontos cada)
+        $idealScore = $keywordCount * 10;
+        
+        // Evitar divisão por zero
+        if ($idealScore == 0) return 0;
+
+        $percentage = ($score / $idealScore) * 100;
+        
+        // Cap em 100%
+        return (int)min(100, round($percentage));
     }
 
     /**

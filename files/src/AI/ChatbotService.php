@@ -244,22 +244,23 @@ class ChatbotService
         }
 
         if (!empty($faqs)) {
-            $prompt .= "## Base de Conhecimento Relacionada\n\n";
+            $prompt .= "## Base de Conhecimento (Fontes Disponíveis)\n\n";
             foreach ($faqs as $idx => $faq) {
-                $prompt .= "### FAQ " . ($idx + 1) . ": {$faq['title']}\n";
+                $score = $faq['score'] ?? 0;
+                $prompt .= "### Fonte " . ($idx + 1) . ": {$faq['title']} (Relevância: {$score}%)\n";
                 $prompt .= "{$faq['content']}\n\n";
             }
         }
 
-        $prompt .= "## Tarefa\n\n";
-        $prompt .= "Forneça uma análise estruturada e profissional:\n\n";
-        $prompt .= "1. **Resumo do Problema**: Identifique claramente o problema principal\n";
-        $prompt .= "2. **Possíveis Causas**: Liste as causas mais prováveis\n";
-        $prompt .= "3. **Soluções Recomendadas**: Forneça soluções práticas e passo-a-passo.\n";
-        $prompt .= "   IMPORTANTE: Avalie criticamente as FAQs fornecidas acima. Use-as APENAS se forem DIRETAMENTE relevantes ao problema.\n";
-        $prompt .= "   - Se uma FAQ for útil, cite-a explicitamente.\n";
-        $prompt .= "   - Se nenhuma FAQ for realmente relevante, afirme: 'Não há registro de FAQ sobre o assunto na base de conhecimento' e forneça sua própria solução técnica baseada em melhores práticas.\n";
-        $prompt .= "4. **Próximos Passos**: Ações específicas que o técnico deve tomar\n\n";
+        $prompt .= "## Tarefa (Modo Estrito de Base de Conhecimento)\n\n";
+        $prompt .= "Analise o chamado e forneça recomendações SOMENTE se houver base de conhecimento correspondente listada acima.\n\n";
+        $prompt .= "1. **Resumo**: Resuma o problema.\n";
+        $prompt .= "2. **Análise de Causas**: Liste possíveis causas baseadas na descrição.\n";
+        $prompt .= "3. **Solução (Restrita)**:\n";
+        $prompt .= "   - Se as fontes acima contiverem a solução: Explique a solução citando a Fonte X e sua relevância.\n";
+        $prompt .= "   - Se as fontes NÃO forem suficientes ou irrelevantes: Responda EXATAMENTE: 'Não encontrei uma solução específica na Base de Conhecimento para este caso. Recomendo análise manual de um técnico nível 2.'\n";
+        $prompt .= "   - NÃO invente soluções que não estejam nas fontes.\n";
+        $prompt .= "4. **Próximos Passos**: Instruções para triagem.\n";
         $prompt .= "Seja objetivo, técnico e baseado em boas práticas de ITIL.";
 
         return $prompt;
@@ -287,14 +288,15 @@ class ChatbotService
         }
 
         if (!empty($faqs)) {
-            $prompt .= "**FAQs relacionadas:**\n";
+            $prompt .= "**Fontes da Base de Conhecimento:**\n";
             foreach ($faqs as $idx => $faq) {
-                $prompt .= ($idx + 1) . ". {$faq['title']}\n";
+                $score = $faq['score'] ?? 0;
+                $prompt .= ($idx + 1) . ". {$faq['title']} (Relevância: {$score}%)\n";
                 // Include partial content/excerpt if available
                 if (!empty($faq['content'])) {
-                    $prompt .= "   Resumo: " . strip_tags($faq['content']) . "\n";
+                    $prompt .= "   Conteúdo: " . strip_tags($faq['content']) . "\n";
                 } elseif (!empty($faq['answer'])) {
-                     $prompt .= "   Resumo: " . substr(strip_tags($faq['answer']), 0, 300) . "...\n";
+                     $prompt .= "   Conteúdo: " . substr(strip_tags($faq['answer']), 0, 300) . "...\n";
                 }
                 $prompt .= "\n";
             }
@@ -302,7 +304,11 @@ class ChatbotService
         }
 
         $prompt .= "**Nova mensagem do usuário:** {$message}\n\n";
-        $prompt .= "Responda de forma útil e profissional. Use as informações das FAQs acima para responder, se aplicável. Se a resposta estiver nas FAQs, cite a fonte.";
+        $prompt .= "DIRETRIZES ESTRITAS:\n";
+        $prompt .= "1. Use APENAS as informações das Fontes acima para sugerir soluções.\n";
+        $prompt .= "2. Se a resposta estiver nas fontes, cite qual fonte usou e sua relevância.\n";
+        $prompt .= "3. Se as fontes não tiverem a resposta, diga: 'Desculpe, não encontrei informações sobre isso na Base de Conhecimento.'\n";
+        $prompt .= "4. Não invente procedimentos técnicos que não estejam nas fontes.";
 
         return $prompt;
     }
