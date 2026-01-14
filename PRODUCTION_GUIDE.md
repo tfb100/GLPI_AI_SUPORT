@@ -42,13 +42,31 @@ O script irá automaticamente:
 >**Nota de Segurança:** O patch verifica se o código já existe antes de inserir, evitando duplicações.
 
 ### Passo 3: Configuração
-1.  Renomeie `config/config_chatbot.example.php` para `config/config_chatbot.php` (se ainda não existir).
-2.  Edite o arquivo e insira sua chave do Gemini ou URL do Ollama.
-3.  No GLPI, dentro do chat, clique na engrenagem ⚙️ para selecionar o provedor ativo.
+1.  Renomeie `config/config_chatbot.example.php` para `config/config_chatbot.php`.
+2.  **Opção A (Recomendada): Ollama (Local)**
+    *   Certifique-se de que o Ollama está rodando.
+    *   O modelo padrão configurado é o **`deepseek-r1:8b`**.
+    *   **Importante:** No servidor do Ollama, execute: `ollama pull deepseek-r1:8b` para baixar o modelo. caso contrário, o chatbot exibirá um erro.
+3.  **Opção B: Google Gemini (Nuvem)**
+    *   Edite o arquivo `config/config_chatbot.php`.
+    *   Insira sua chave de API em `$CFG_GLPI['gemini_api_key']`.
+    *   Altere `$CFG_GLPI['chatbot_provider']` para `'gemini'`.
 
 ---
 
-## 4. Análise de Impacto e Segurança
+## 4. Solução de Problemas Comuns
+
+### Erro: "Modelo '...' não encontrado"
+Se o chatbot retornar um erro dizendo que o modelo não foi encontrado:
+1.  Acesse o terminal do servidor onde o Ollama está instalado.
+2.  Execute o comando de download sugerido na mensagem de erro (ex: `ollama pull deepseek-r1:8b`).
+
+### Erro: "Configure a Chave de API do Gemini"
+Se você selecionou o provedor Gemini, é obrigatório editar o arquivo `config/config_chatbot.php` e inserir uma chave válida gerada no Google AI Studio.
+
+---
+
+## 5. Análise de Impacto e Segurança
 
 ### Arquivos Modificados
 A instalação é projetada para ser minimamente invasiva. Apenas **UM** arquivo do núcleo do GLPI é modificado:
