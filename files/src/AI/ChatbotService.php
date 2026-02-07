@@ -34,7 +34,10 @@ class ChatbotService
     private $kbSearcher;
 
     /** @var int */
-    private $ticketId;
+    private $itemId;
+
+    /** @var string */
+    private $itemType;
 
     /** @var int */
     private $userId;
@@ -42,17 +45,22 @@ class ChatbotService
     /**
      * Constructor
      *
-     * @param int $ticketId
+     * @param int $itemId
      * @param int $userId
      * @param string|null $provider 'gemini' or 'ollama' (optional)
+     * @param string $itemType 'Ticket' or 'Problem' (default: 'Ticket')
      */
-    public function __construct(int $ticketId, int $userId = null, string $provider = null)
+    public function __construct(int $itemId, int $userId = null, string $provider = null, string $itemType = 'Ticket')
     {
         global $CFG_GLPI;
 
-        $this->ticketId = $ticketId;
+        $this->itemId = $itemId;
+        $this->itemType = $itemType;
         $this->userId = $userId ?? Session::getLoginUserID();
         
+        // Ensure ticketId mapping for consistency if needed or use specific property
+        // But better to use $itemId generic name.
+
         // If no provider specified, verify if specific preferred provider is set in session or use config
         if (empty($provider)) {
             $provider = $CFG_GLPI['chatbot_provider'] ?? 'gemini';
@@ -66,17 +74,108 @@ class ChatbotService
         }
 
         $this->kbSearcher = new KnowledgeBaseSearcher();
+
+        $this->logDebug("ChatbotService initialized for user " . $this->userId);
     }
 
     /**
-     * Análise inicial do ticket
+     * Registra log se o modo debug estiver ativo
+     *
+     * @param string $message
+     * @return void
+     */
+    private function logDebug(string $message): void
+    {
+        global $CFG_GLPI;
+        if (!empty($CFG_GLPI['chatbot_debug'])) {
+            Toolbox::logInFile('chatbot', date('[Y-m-d H:i:s] ') . $message . "\n");
+        }
+    }
+
+    /**
+     * Análise inicial do item (Ticket ou Problem)
      *
      * @return array
      */
-    public function analyzeTicket(): array
+    public function analyzeItem(): array
+    {
+        if ($this->itemType === 'Problem') {
+            return $this->analyzeProblem();
+        }
+        
+        return $this->analyzeTicket();
+    }
+
+    /**
+     * Análise de Problema (Incidente) - Conhecimento Geral
+     */
+    private function analyzeProblem(): array {
+        $problem = new \Problem();
+        if (!$problem->getFromDB($this->itemId)) {
+             return ['success' => false, 'error' => 'Problema não encontrado'];
+        }
+
+        if (!$problem->canViewItem()) {
+            return ['success' => false, 'error' => 'Sem permissão para visualizar este problema'];
+        }
+        
+        $this->logDebug("analyzeProblem: Context extracted for Problem #" . $this->itemId);
+
+        // Extract context manually for now (since TicketAnalyzer is specific)
+        $context = [
+            'id' => $problem->getID(),
+            'title' => $problem->fields['name'],
+            'description' => $problem->fields['content'],
+            'priority' => $problem->fields['priority'],
+            'status' => $problem->fields['status']
+        ];
+
+        // Validar Configuração do Gemini
+        if ($this->aiClient instanceof GeminiClient && !$this->aiClient->isConfigured()) {
+            return [
+                'success' => true,
+                'analysis' => '⚠️ **Atenção:** Configure a Chave de API para utilizar este recurso.',
+                'context' => $context
+            ];
+        }
+
+        $prompt = $this->buildProblemAnalysisPrompt($context);
+
+        try {
+            $aiResponse = $this->aiClient->generateContent($prompt);
+            $responseText = $aiResponse['text'];
+
+            // Extrair fontes estruturadas
+            $externalSources = $this->extractSourcesFromResponse($responseText);
+
+            $this->saveConversation('Análise inicial do problema', false);
+            
+            // Salvar no histórico (armazenando as fontes como suggested_kb_items para reutilizar a coluna)
+            $conversationId = $this->saveConversation($responseText, true, $externalSources);
+
+            return [
+                'success' => true,
+                'conversation_id' => $conversationId,
+                'analysis' => $responseText,
+                'suggested_faqs' => $externalSources, // Reutilizar a chave para o frontend
+                'is_external' => true, // Flag para o frontend saber que são fontes externas
+                'context' => $context
+            ];
+
+        } catch (\Exception $e) {
+            $errorMessage = $this->getFriendlyErrorMessage($e);
+            Toolbox::logError('Erro na análise do problema: ' . $e->getMessage());
+            return ['success' => false, 'error' => $errorMessage];
+        }
+    }
+
+    /**
+     * Análise de Ticket (Suporte) - Foco em KB
+     */
+    private function analyzeTicket(): array
     {
         $ticket = new Ticket();
-        if (!$ticket->getFromDB($this->ticketId)) {
+        if (!$ticket->getFromDB($this->itemId)) {
             return [
                 'success' => false,
                 'error' => 'Ticket não encontrado'
@@ -93,6 +192,8 @@ class ChatbotService
 
         $this->ticketAnalyzer = new TicketAnalyzer($ticket);
         $context = $this->ticketAnalyzer->extractContext();
+
+        $this->logDebug("analyzeTicket: Context extracted for Ticket #" . $this->itemId);
 
         // Definir threshold de relevância
         // Título match = 10pts, Conteúdo match = 2pts each
@@ -133,6 +234,8 @@ class ChatbotService
         // Gerar análise com AI
         $prompt = $this->buildAnalysisPrompt($context, $faqs);
         
+        $this->logDebug("analyzeTicket: Sending prompt to AI (" . get_class($this->aiClient) . ")");
+
         try {
             $aiResponse = $this->aiClient->generateContent($prompt);
             
@@ -142,7 +245,7 @@ class ChatbotService
                 false
             );
             
-            $this->saveConversation(
+            $conversationId = $this->saveConversation(
                 $aiResponse['text'],
                 true,
                 $faqs
@@ -150,6 +253,7 @@ class ChatbotService
 
             return [
                 'success' => true,
+                'conversation_id' => $conversationId,
                 'analysis' => $aiResponse['text'],
                 'suggested_faqs' => $faqs,
                 'context' => [
@@ -161,11 +265,12 @@ class ChatbotService
             ];
 
         } catch (\Exception $e) {
+            $errorMessage = $this->getFriendlyErrorMessage($e);
             Toolbox::logError('Erro na análise do ticket: ' . $e->getMessage());
             
             return [
                 'success' => false,
-                'error' => 'Erro ao processar análise. Por favor, tente novamente.',
+                'error' => $errorMessage,
                 'suggested_faqs' => $faqs
             ];
         }
@@ -191,7 +296,48 @@ class ChatbotService
 
         // Obter histórico da conversa
         $history = $this->getConversationHistory(10);
+        
+        // Se for Problema, usa lógica sem KB
+        if ($this->itemType === 'Problem') {
+             return $this->processProblemMessage($message, $history);
+        }
 
+        return $this->processTicketMessage($message, $history);
+    }
+    
+    private function processProblemMessage($message, $history) {
+        // Build prompt purely on history + general knowledge
+        $prompt = $this->buildProblemChatPrompt($message, $history);
+        
+        if ($this->aiClient instanceof GeminiClient && !$this->aiClient->isConfigured()) {
+            return ['success' => true, 'response' => '⚠️ Configure a API Key.'];
+        }
+
+        try {
+            $aiResponse = $this->aiClient->generateContent($prompt);
+            $responseText = $aiResponse['text'];
+
+            // Extrair fontes estruturadas
+            $externalSources = $this->extractSourcesFromResponse($responseText);
+            
+            // Salvar resposta do bot com as fontes
+            $conversationId = $this->saveConversation($responseText, true, $externalSources);
+
+            return [
+                'success' => true, 
+                'conversation_id' => $conversationId,
+                'response' => $responseText,
+                'suggested_faqs' => $externalSources,
+                'is_external' => true
+            ];
+        } catch (\Exception $e) {
+            $errorMessage = $this->getFriendlyErrorMessage($e);
+            Toolbox::logError('Erro ao processar mensagem (problem): ' . $e->getMessage());
+            return ['success' => false, 'error' => $errorMessage];
+        }
+    }
+
+    private function processTicketMessage($message, $history) {
         // Buscar FAQs relacionadas à mensagem
         $keywords = $this->extractKeywordsFromMessage($message);
         $faqs = $this->kbSearcher->searchByKeywords($keywords, 3);
@@ -212,7 +358,7 @@ class ChatbotService
             $aiResponse = $this->aiClient->generateContent($prompt);
             
             // Salvar resposta do bot
-            $this->saveConversation(
+            $conversationId = $this->saveConversation(
                 $aiResponse['text'],
                 true,
                 $faqs
@@ -220,16 +366,18 @@ class ChatbotService
 
             return [
                 'success' => true,
+                'conversation_id' => $conversationId,
                 'response' => $aiResponse['text'],
                 'suggested_faqs' => $faqs
             ];
 
         } catch (\Exception $e) {
+            $errorMessage = $this->getFriendlyErrorMessage($e);
             Toolbox::logError('Erro ao processar mensagem: ' . $e->getMessage());
             
             return [
                 'success' => false,
-                'error' => 'Erro ao processar mensagem. Por favor, tente novamente.',
+                'error' => $errorMessage,
                 'suggested_faqs' => $faqs
             ];
         }
@@ -291,7 +439,79 @@ class ChatbotService
     }
 
     /**
-     * Constrói prompt para chat
+     * Constrói prompt para análise de Problema (Incidente)
+     *
+     * @param array $context
+     * @return string
+     */
+    private function buildProblemAnalysisPrompt(array $context): string
+    {
+        global $CFG_GLPI;
+        
+        // System prompt personalizado
+        $systemPrompt = $CFG_GLPI['chatbot_system_prompt'] ?? 
+            "Você é um especialista em TI Sênior e Gerente de Incidentes.";
+        
+        $prompt = $systemPrompt . "\n\n";
+        $prompt .= "# ANÁLISE DE INCIDENTE (PROBLEMA)\n\n";
+        $prompt .= "## Detalhes do Incidente\n";
+        $prompt .= "**Título:** {$context['title']}\n";
+        $prompt .= "**Descrição:**\n{$context['description']}\n";
+        $prompt .= "**Prioridade:** {$context['priority']}\n";
+        $prompt .= "**Status:** {$context['status']}\n\n";
+        
+        $prompt .= "## Tarefa\n";
+        $prompt .= "Use seu conhecimento técnico geral para analisar este incidente. NÃO se restrinja a bases de conhecimento internas.\n";
+        $prompt .= "**IMPORTANTE:** Se a descrição ou título do incidente estiver em inglês ou outro idioma, TRADUZA para Português do Brasil na sua explicação.\n\n";
+        $prompt .= "1. **Explicação Clara**: Explique o que é este problema de forma que um técnico júnior ou usuário entenda (em Português).\n";
+        $prompt .= "2. **Impactos**: Quais os possíveis impactos deste problema no ambiente de TI?\n";
+        $prompt .= "3. **Possíveis Causas**: Liste as causas mais prováveis (ex: conectividade, disco cheio, falha de serviço).\n";
+        $prompt .= "4. **Plano de Ação Sugerido**: Proponha passos técnicos para resolver ou diagnosticar (comandos, verificações).\n";
+        $prompt .= "5. **Referências & Fontes Confiáveis**: Forneça links ou referências para documentações oficiais.\n\n";
+        
+        $prompt .= "## Requisito de Formato Estruturado\n";
+        $prompt .= "Ao final de sua resposta, você DEVE adicionar uma seção estritamente com o marcador [SOURCES] contendo um array JSON com as referências citadas no seguinte formato:\n";
+        $prompt .= "[SOURCES]\n";
+        $prompt .= "[\n";
+        $prompt .= "  {\"title\": \"Título da Documentação\", \"url\": \"https://link-da-referencia\", \"score\": 95},\n";
+        $prompt .= "  {\"title\": \"Busca Sugerida: Como resolver erro X\", \"url\": \"https://www.google.com/search?q=como+resolver+erro+X\", \"score\": 80}\n";
+        $prompt .= "]\n\n";
+        
+        $prompt .= "Seja educativo, profissional e traduza termos complexos.";
+
+        return $prompt;
+    }
+
+    /**
+     * Constrói prompt para chat de Problema
+     */
+    private function buildProblemChatPrompt(string $message, array $history): string
+    {
+        $prompt = "Você é um especialista em TI Sênior ajudando a resolver um Incidente Grave.\n\n";
+        
+        if (!empty($history)) {
+            $prompt .= "**Histórico da conversa:**\n";
+            foreach (array_slice($history, -5) as $entry) {
+                $role = $entry['is_bot'] ? 'Especialista' : 'Usuário';
+                $prompt .= "{$role}: {$entry['message']}\n";
+            }
+            $prompt .= "\n";
+        }
+
+        $prompt .= "**Nova pergunta do usuário:** {$message}\n\n";
+        $prompt .= "Responda usando seu conhecimento técnico geral. Sugira comandos, scripts ou verificações lógicas. Seja direto e focado na resolução do incidente.\n\n";
+        $prompt .= "## Requisito de Fontes\n";
+        $prompt .= "Se você citar links ou documentações, ADICIONE obrigatoriamente ao final o bloco [SOURCES] formatado em JSON:\n";
+        $prompt .= "[SOURCES]\n";
+        $prompt .= "[\n";
+        $prompt .= "  {\"title\": \"Título da Fonte\", \"url\": \"https://...\", \"score\": 90}\n";
+        $prompt .= "]\n";
+
+        return $prompt;
+    }
+
+    /**
+     * Constrói prompt para chat de Ticket
      *
      * @param string $message
      * @param array $history
@@ -343,22 +563,31 @@ class ChatbotService
      * @param string $message
      * @param bool $isBot
      * @param array $suggestedKbItems
-     * @return bool
+     * @return int
      */
-    private function saveConversation(string $message, bool $isBot, array $suggestedKbItems = []): bool
+    private function saveConversation(string $message, bool $isBot, array $suggestedKbItems = []): int
     {
         global $DB;
 
         $kbItemsJson = !empty($suggestedKbItems) ? json_encode(array_column($suggestedKbItems, 'id')) : null;
+        $date = date('Y-m-d H:i:s');
+        $isBotInt = $isBot ? 1 : 0;
+        
+        // Escape values
+        $e_items_id = (int)$this->itemId;
+        $e_item_type = $DB->escape($this->itemType);
+        $e_users_id = (int)$this->userId;
+        $e_message = $DB->escape($message);
+        $e_kb_items = $kbItemsJson ? "'" . $DB->escape($kbItemsJson) . "'" : "NULL";
+        $e_date = $DB->escape($date);
 
-        return $DB->insert('glpi_chatbot_conversations', [
-            'tickets_id' => $this->ticketId,
-            'users_id' => $this->userId,
-            'message' => $message,
-            'is_bot' => $isBot ? 1 : 0,
-            'suggested_kb_items' => $kbItemsJson,
-            'date_creation' => date('Y-m-d H:i:s')
-        ]);
+        $query = "INSERT INTO glpi_chatbot_conversations 
+                  (items_id, item_type, users_id, message, is_bot, suggested_kb_items, date_creation) 
+                  VALUES ($e_items_id, '$e_item_type', $e_users_id, '$e_message', $isBotInt, $e_kb_items, '$e_date')";
+
+        $DB->query($query);
+        
+        return $DB->insertId();
     }
 
     /**
@@ -374,7 +603,8 @@ class ChatbotService
         $iterator = $DB->request([
             'FROM' => 'glpi_chatbot_conversations',
             'WHERE' => [
-                'tickets_id' => $this->ticketId
+                'items_id' => $this->itemId,
+                'item_type' => $this->itemType
             ],
             'ORDER' => 'date_creation DESC',
             'LIMIT' => $limit
@@ -425,12 +655,15 @@ class ChatbotService
     {
         global $DB;
 
-        return $DB->insert('glpi_chatbot_feedback', [
-            'conversations_id' => $conversationId,
-            'was_helpful' => $wasHelpful ? 1 : 0,
-            'comment' => $comment,
-            'date_creation' => date('Y-m-d H:i:s')
-        ]);
+        $wasHelpfulInt = $wasHelpful ? 1 : 0;
+        $e_comment = $DB->escape($comment);
+        $date = date('Y-m-d H:i:s');
+        
+        $query = "INSERT INTO glpi_chatbot_feedback 
+                  (conversations_id, was_helpful, comment, date_creation) 
+                  VALUES ($conversationId, $wasHelpfulInt, '$e_comment', '$date')";
+
+        return $DB->query($query);
     }
 
     /**
@@ -453,5 +686,73 @@ class ChatbotService
         }
         
         return !empty($CFG_GLPI['gemini_api_key']);
+    }
+
+    /**
+     * Retorna mensagem de erro amigável baseada na exceção
+     *
+     * @param \Exception $e
+     * @return string
+     */
+    private function getFriendlyErrorMessage(\Exception $e): string
+    {
+        $msg = $e->getMessage();
+        
+        // Detectar erros de conexão (cURL, timeouts, conexões recusadas)
+        if (strpos($msg, 'cURL error') !== false || 
+            strpos($msg, 'Failed to connect') !== false || 
+            strpos($msg, 'Erro ao comunicar') !== false ||
+            strpos($msg, 'Connection refused') !== false) {
+                
+            return 'Não foi possível comunicar com o provedor de IA no momento. Verifique se o serviço está ativo ou tente novamente em alguns instantes.';
+        }
+        
+        return 'Erro ao processar solicitação: ' . $msg;
+    }
+
+    /**
+     * Corrige recursivamente o encoding para UTF-8 válido em arrays ou strings
+     *
+     * @param mixed $data
+     * @return mixed
+     */
+    public static function fixUtf8Recursive($data)
+    {
+        if (is_string($data)) {
+            if (function_exists('mb_convert_encoding')) {
+                return mb_convert_encoding($data, 'UTF-8', 'UTF-8');
+            }
+            return $data;
+        }
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                $data[$key] = self::fixUtf8Recursive($value);
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * Extrai fontes estruturadas da resposta da IA
+     *
+     * @param string $text
+     * @return array
+     */
+    private function extractSourcesFromResponse(string &$text): array
+    {
+        $sources = [];
+        $pattern = '/\[SOURCES\]\s*(\[.*?\])/s';
+        
+        if (preg_match($pattern, $text, $matches)) {
+            $json = $matches[1];
+            $decoded = json_decode($json, true);
+            if (is_array($decoded)) {
+                $sources = $decoded;
+            }
+            // Remover o bloco [SOURCES] do texto para não exibir o JSON para o usuário
+            $text = trim(preg_replace($pattern, '', $text));
+        }
+        
+        return $sources;
     }
 }

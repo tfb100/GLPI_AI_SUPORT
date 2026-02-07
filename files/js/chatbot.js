@@ -20,7 +20,8 @@ var GLPIChatbot = (function () {
     'use strict';
 
     var config = {
-        ticketId: null,
+        itemId: null,
+        itemType: 'Ticket', // Default to Ticket
         ajaxUrl: null,
         isOpen: false,
         isAnalyzing: false
@@ -37,8 +38,10 @@ var GLPIChatbot = (function () {
     /**
      * Inicializa o chatbot
      */
-    function init(ticketId, ajaxUrl) {
-        config.ticketId = ticketId;
+    function init(itemId, ajaxUrl, itemType = 'Ticket') {
+        console.info('[GLPI Chatbot] Inicializando...', { itemId, itemType, ajaxUrl });
+        config.itemId = itemId;
+        config.itemType = itemType;
         config.ajaxUrl = ajaxUrl || '../ajax/chatbot.php';
 
         createWidget();
@@ -50,6 +53,10 @@ var GLPIChatbot = (function () {
      * Cria o widget do chatbot
      */
     function createWidget() {
+        // Adjust button title/icon based on itemType if needed, but generic "Analyze" works.
+        // If Problem, maybe change "Analisar Chamado" to "Analisar Problema"?
+        var analyzeText = config.itemType === 'Problem' ? 'Analisar Problema' : 'Analisar Chamado';
+
         var html = `
             <div id="glpi-chatbot-widget" class="chatbot-widget">
                 <button id="chatbot-toggle" class="chatbot-toggle" title="Assistente IA">
@@ -61,7 +68,7 @@ var GLPIChatbot = (function () {
                 <div class="chatbot-header">
                     <div class="chatbot-title">
                         <i class="fas fa-robot"></i>
-                        <span>Assistente IA</span>
+                        <span>Assistente IA (${config.itemType === 'Problem' ? 'Incidente' : 'Suporte'})</span>
                     </div>
                     <div class="chatbot-header-actions">
                         <!-- Settings Button -->
@@ -69,7 +76,7 @@ var GLPIChatbot = (function () {
                             <i class="fas fa-cog"></i>
                         </button>
                         <!-- Analyze Button -->
-                        <button id="chatbot-analyze-header-btn" class="chatbot-header-btn" title="Analisar Chamado">
+                        <button id="chatbot-analyze-header-btn" class="chatbot-header-btn" title="${analyzeText}">
                             <i class="fas fa-magic"></i>
                         </button>
                         <button class="chatbot-close" title="Fechar">
@@ -95,9 +102,9 @@ var GLPIChatbot = (function () {
                         <div class="chatbot-welcome">
                             <i class="fas fa-robot chatbot-welcome-icon"></i>
                             <p>Olá! Sou seu assistente de IA.</p>
-                            <p>Posso ajudar a analisar este chamado e sugerir soluções da base de conhecimento.</p>
+                            <p>Posso ajudar a analisar este ${config.itemType === 'Problem' ? 'incidente' : 'chamado'} e sugerir soluções.</p>
                             <button class="btn btn-primary btn-sm" id="chatbot-analyze-btn">
-                                <i class="fas fa-search"></i> Analisar Chamado
+                                <i class="fas fa-search"></i> ${analyzeText}
                             </button>
                         </div>
                     </div>
@@ -214,7 +221,17 @@ var GLPIChatbot = (function () {
         showTypingIndicator();
 
         // Obter CSRF token
-        var csrfToken = $('meta[property="glpi:csrf_token"]').attr('content') || '';
+        var csrfToken = $('meta[property="glpi:csrf_token"]').attr('content') || $('input[name="_glpi_csrf_token"]').val() || '';
+        var provider = $('#chatbot-provider-select').val() || 'gemini';
+
+        console.log('[GLPI Chatbot] Enviando requisição de análise...', {
+            item_id: config.itemId,
+            item_type: config.itemType,
+            provider: provider,
+            csrf_token_length: csrfToken.length,
+            csrf_from_meta: !!$('meta[property="glpi:csrf_token"]').length,
+            csrf_from_input: !!$('input[name="_glpi_csrf_token"]').length
+        });
 
         $.ajax({
             url: config.ajaxUrl,
@@ -224,17 +241,26 @@ var GLPIChatbot = (function () {
             },
             data: {
                 action: 'analyze',
-                ticket_id: config.ticketId,
-                provider: $('#chatbot-provider-select').val() || 'gemini',
+                item_id: config.itemId,
+                item_type: config.itemType,
+                provider: provider,
                 _glpi_csrf_token: csrfToken
             },
             dataType: 'json',
             success: function (response) {
+                console.log('[GLPI Chatbot] Resposta da análise recebida:', response);
                 hideTypingIndicator();
                 config.isAnalyzing = false;
 
                 if (response.success) {
-                    addMessage(response.analysis, true, response.suggested_faqs);
+                    addMessage(
+                        response.analysis || response.response,
+                        true,
+                        response.suggested_faqs,
+                        false,
+                        response.conversation_id,
+                        response.is_external || false
+                    );
 
                     if (response.context) {
                         addContextInfo(response.context);
@@ -244,6 +270,12 @@ var GLPIChatbot = (function () {
                 }
             },
             error: function (xhr) {
+                console.error('[GLPI Chatbot] Erro na análise AJAX:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText,
+                    json: xhr.responseJSON
+                });
                 hideTypingIndicator();
                 config.isAnalyzing = false;
 
@@ -285,7 +317,8 @@ var GLPIChatbot = (function () {
             },
             data: {
                 action: 'chat',
-                ticket_id: config.ticketId,
+                item_id: config.itemId,
+                item_type: config.itemType,
                 message: message,
                 provider: $('#chatbot-provider-select').val() || 'gemini',
                 _glpi_csrf_token: csrfToken
@@ -295,12 +328,18 @@ var GLPIChatbot = (function () {
                 hideTypingIndicator();
 
                 if (response.success) {
-                    addMessage(response.response, true, response.suggested_faqs);
+                    addMessage(response.response, true, response.suggested_faqs, false, response.conversation_id);
                 } else {
                     addMessage('Erro: ' + (response.error || 'Falha ao processar mensagem'), true, null, true);
                 }
             },
             error: function (xhr) {
+                console.error('[GLPI Chatbot] Erro no chat AJAX:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText,
+                    json: xhr.responseJSON
+                });
                 hideTypingIndicator();
 
                 var errorMsg = 'Erro ao comunicar com o servidor';
@@ -321,7 +360,7 @@ var GLPIChatbot = (function () {
     /**
      * Adiciona mensagem ao chat
      */
-    function addMessage(text, isBot, faqs, isError) {
+    function addMessage(text, isBot, faqs, isError, conversationId, isExternal = false) {
         // Remover mensagem de boas-vindas se existir
         $('.chatbot-welcome').remove();
 
@@ -333,8 +372,8 @@ var GLPIChatbot = (function () {
                 ${isBot ? '<i class="fas fa-robot chatbot-avatar"></i>' : '<i class="fas fa-user chatbot-avatar"></i>'}
                 <div class="chatbot-message-content">
                     <div class="chatbot-message-text">${formatMessage(text)}</div>
-                    ${faqs && faqs.length > 0 ? renderFAQs(faqs) : ''}
-                    ${isBot && !isError ? renderFeedbackButtons() : ''}
+                    ${faqs && faqs.length > 0 ? renderFAQs(faqs, isExternal) : ''}
+                    ${isBot && !isError && conversationId ? renderFeedbackButtons(conversationId) : ''}
                 </div>
             </div>
         `;
@@ -354,40 +393,81 @@ var GLPIChatbot = (function () {
     }
 
     /**
-     * Renderiza FAQs sugeridas
+     * Renderiza FAQs sugeridas em formato de tabela
      */
-    function renderFAQs(faqs) {
-        var html = '<div class="chatbot-faqs"><div class="chatbot-faqs-title"><i class="fas fa-book"></i> FAQs Relacionadas:</div><ul>';
+    function renderFAQs(faqs, isExternal = false) {
+        var title = isExternal ? 'Fontes Externas Sugeridas:' : 'Tutoriais Sugeridos:';
+        var colLabel = isExternal ? 'Fonte' : 'POP';
+        var itemLabel = isExternal ? 'Ref' : 'Tutorial';
+        var externalClass = isExternal ? 'is-external' : '';
 
-        faqs.forEach(function (faq) {
+        var html = `
+            <div class="chatbot-faqs ${externalClass}">
+                <div class="chatbot-faqs-title">
+                    <i class="fas ${isExternal ? 'fa-globe' : 'fa-book'}"></i> ${title}
+                </div>
+                <div class="chatbot-faq-table-container">
+                    <table class="chatbot-faq-table">
+                        <thead>
+                            <tr>
+                                <th>${colLabel}</th>
+                                <th>${itemLabel}</th>
+                                <th>Relevância</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        faqs.forEach(function (faq, index) {
             var scoreClass = '';
+            var scoreText = 'Baixa';
+
             if (faq.score) {
-                if (faq.score >= 70) scoreClass = 'chatbot-faq-score-high';
-                else if (faq.score >= 40) scoreClass = 'chatbot-faq-score-medium';
-                else scoreClass = 'chatbot-faq-score-low';
+                if (faq.score >= 70) {
+                    scoreClass = 'chatbot-faq-score-high';
+                    scoreText = `Alta (${faq.score}%)`;
+                } else if (faq.score >= 40) {
+                    scoreClass = 'chatbot-faq-score-medium';
+                    scoreText = `Média (${faq.score}%)`;
+                } else {
+                    scoreClass = 'chatbot-faq-score-low';
+                    scoreText = `Baixa (${faq.score}%)`;
+                }
             }
 
+            var typeLabel = isExternal ? 'Doc' : 'POP';
+            var sourceLabel = `${typeLabel} ${index + 1}`;
+
             html += `
-                <li>
-                    <a href="${faq.url}" class="chatbot-faq-link" target="_blank">
-                        <i class="fas fa-external-link-alt"></i> ${faq.title}
-                        ${faq.score ? `<span class="chatbot-faq-score ${scoreClass}" title="Relevância">${faq.score}%</span>` : ''}
-                    </a>
-                    <div class="chatbot-faq-excerpt">${faq.content}</div>
-                </li>
+                <tr>
+                    <td class="chatbot-faq-source-cell">${sourceLabel}</td>
+                    <td class="chatbot-faq-title-cell">
+                        <a href="${faq.url}" class="chatbot-faq-link" target="_blank" title="${faq.title}">
+                            ${faq.title}
+                        </a>
+                    </td>
+                    <td class="chatbot-faq-score-cell">
+                        <span class="chatbot-faq-score ${scoreClass}">${scoreText}</span>
+                    </td>
+                </tr>
             `;
         });
 
-        html += '</ul></div>';
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
         return html;
     }
 
     /**
      * Renderiza botões de feedback
      */
-    function renderFeedbackButtons() {
+    function renderFeedbackButtons(conversationId) {
         return `
-            <div class="chatbot-feedback">
+            <div class="chatbot-feedback" data-conversation-id="${conversationId}">
                 <span class="chatbot-feedback-label">Esta resposta foi útil?</span>
                 <button class="chatbot-feedback-btn" data-helpful="1" title="Sim">
                     <i class="fas fa-thumbs-up"></i>
@@ -455,22 +535,44 @@ var GLPIChatbot = (function () {
      * Carrega histórico
      */
     function loadHistory() {
+        console.log('[GLPI Chatbot] Carregando histórico...', {
+            item_id: config.itemId,
+            item_type: config.itemType
+        });
         $.ajax({
             url: config.ajaxUrl,
             method: 'GET',
             data: {
                 action: 'history',
-                ticket_id: config.ticketId
+                item_id: config.itemId,
+                item_type: config.itemType
             },
             dataType: 'json',
             success: function (response) {
+                console.log('[GLPI Chatbot] Histórico carregado:', response);
                 if (response.success && response.history && response.history.length > 0) {
                     $('.chatbot-welcome').remove();
 
                     response.history.forEach(function (entry) {
-                        addMessage(entry.message, entry.is_bot);
+                        // Se sugeridos_kb_items for um objeto (fontes externas) ou array de IDs
+                        var faqs = entry.suggested_kb_items;
+                        var isExternal = false;
+
+                        // Inferir se é externo baseado no conteúdo do primeiro item (se for objeto com url)
+                        if (faqs && faqs.length > 0 && typeof faqs[0] === 'object' && faqs[0].url) {
+                            isExternal = true;
+                        }
+
+                        addMessage(entry.message, entry.is_bot, faqs, false, entry.id, isExternal);
                     });
                 }
+            },
+            error: function (xhr) {
+                console.error('[GLPI Chatbot] Erro ao carregar histórico:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText
+                });
             }
         });
     }
@@ -482,11 +584,54 @@ var GLPIChatbot = (function () {
         var btn = $(this);
         var wasHelpful = btn.data('helpful') === 1;
         var feedbackContainer = btn.closest('.chatbot-feedback');
+        var conversationId = feedbackContainer.data('conversation-id');
 
-        feedbackContainer.html('<span class="chatbot-feedback-thanks"><i class="fas fa-check"></i> Obrigado pelo feedback!</span>');
+        if (!conversationId) {
+            console.error('Conversation ID missing for feedback');
+            return;
+        }
 
-        // Aqui você pode enviar o feedback para o servidor
-        // Por enquanto, apenas mostra a mensagem de agradecimento
+        feedbackContainer.html('<span class="chatbot-feedback-thanks"><i class="fas fa-spinner fa-spin"></i> Enviando...</span>');
+
+        // Obter CSRF token
+        var csrfToken = $('meta[property="glpi:csrf_token"]').attr('content') || '';
+
+        console.log('[GLPI Chatbot] Enviando feedback...', {
+            conversation_id: conversationId,
+            was_helpful: wasHelpful
+        });
+
+        $.ajax({
+            url: config.ajaxUrl,
+            method: 'POST',
+            headers: {
+                'X-Glpi-Csrf-Token': csrfToken
+            },
+            data: {
+                action: 'feedback',
+                conversation_id: conversationId,
+                was_helpful: wasHelpful ? 1 : 0,
+                comment: '', // Future: allow comment input
+                _glpi_csrf_token: csrfToken
+            },
+            dataType: 'json',
+            success: function (response) {
+                console.log('[GLPI Chatbot] Resposta do feedback:', response);
+                if (response.success) {
+                    feedbackContainer.html('<span class="chatbot-feedback-thanks"><i class="fas fa-check"></i> Obrigado pelo feedback!</span>');
+                } else {
+                    feedbackContainer.html('<span class="chatbot-feedback-error"><i class="fas fa-exclamation-circle"></i> Erro ao enviar.</span>');
+                }
+            },
+            error: function (xhr) {
+                console.error('[GLPI Chatbot] Erro ao enviar feedback:', {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    responseText: xhr.responseText
+                });
+                feedbackContainer.html('<span class="chatbot-feedback-error"><i class="fas fa-exclamation-circle"></i> Erro ao enviar.</span>');
+            }
+        });
     }
 
     // API pública
@@ -497,10 +642,22 @@ var GLPIChatbot = (function () {
     };
 })();
 
-// Auto-inicializar se estiver na página de ticket
+// Auto-inicializar se estiver na página de ticket ou problema
 $(document).ready(function () {
-    var ticketId = $('input[name="id"]').val();
-    if (ticketId && window.location.href.indexOf('ticket.form.php') > -1) {
-        GLPIChatbot.init(ticketId);
+    var itemId = $('input[name="id"]').val();
+    var href = window.location.href;
+    var itemType = null;
+
+    if (itemId && itemId > 0) {
+        if (href.indexOf('ticket.form.php') > -1) {
+            itemType = 'Ticket';
+        } else if (href.indexOf('problem.form.php') > -1) {
+            itemType = 'Problem';
+        }
+
+        if (itemType) {
+            console.log('[GLPI Chatbot] Auto-inicializando para ' + itemType + ' #' + itemId);
+            GLPIChatbot.init(itemId, null, itemType);
+        }
     }
 });

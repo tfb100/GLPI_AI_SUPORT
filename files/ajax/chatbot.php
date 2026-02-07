@@ -18,12 +18,27 @@ use Glpi\AI\ChatbotService;
 $AJAX_INCLUDE = 1;
 include ('../inc/includes.php');
 
+global $CFG_GLPI;
+
+// Optional: Custom logging based on config
+function chatbotLog(string $message) {
+    global $CFG_GLPI;
+    if (!empty($CFG_GLPI['chatbot_debug'])) {
+        Toolbox::logInFile('chatbot', date('[Y-m-d H:i:s] ') . $message . "\n");
+    }
+}
+
+chatbotLog("AJAX Request: " . ($_REQUEST['action'] ?? 'no action'));
+
 // Send JSON headers
 header('Content-Type: application/json; charset=UTF-8');
 Html::header_nocache();
 
-Session::checkLoginUser();
+// Prevent warnings from corrupting JSON
+ini_set('display_errors', 0);
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
+Session::checkLoginUser();
 
 // Ensure CSRF protection
 if (isset($_POST['action'])) {
@@ -59,28 +74,35 @@ try {
     }
 } catch (\Exception $e) {
     http_response_code(400);
-    echo json_encode([
+    echo json_encode(ChatbotService::fixUtf8Recursive([
         'success' => false,
         'error' => $e->getMessage()
-    ]);
+    ]));
 }
 
 /**
- * Analisa um ticket
+ * Analisa um item (Ticket ou Problema)
  */
 function handleAnalyze()
 {
-    $ticketId = (int)($_POST['ticket_id'] ?? 0);
+    $itemId = (int)($_POST['item_id'] ?? ($_POST['ticket_id'] ?? 0));
+    $itemType = $_POST['item_type'] ?? 'Ticket';
     
-    if ($ticketId <= 0) {
-        throw new \InvalidArgumentException('ID do ticket inválido');
+    // Validate Item Type
+    if (!in_array($itemType, ['Ticket', 'Problem'])) {
+         throw new \InvalidArgumentException('Tipo de item inválido');
+    }
+
+    if ($itemId <= 0) {
+        throw new \InvalidArgumentException("ID do {$itemType} inválido");
     }
 
     // Verificar se chatbot está habilitado
     if (!ChatbotService::isEnabled()) {
+        $provider = $_POST['provider'] ?? 'AI';
         echo json_encode([
             'success' => false,
-            'error' => 'Chatbot não está habilitado. Configure a API key do Gemini.'
+            'error' => "Chatbot ({$provider}) não está habilitado. Verifique as configurações no arquivo config_chatbot.php."
         ]);
         return;
     }
@@ -95,24 +117,34 @@ function handleAnalyze()
         return;
     }
 
+    $provider = $_POST['provider'] ?? null;
+
     try {
-        $chatbot = new ChatbotService($ticketId);
-        $result = $chatbot->analyzeTicket();
+        $chatbot = new ChatbotService($itemId, null, $provider, $itemType);
+        $result = $chatbot->analyzeItem();
         
         // Garantir que sempre retornamos JSON válido
         if (!is_array($result)) {
             throw new \RuntimeException('Resultado inválido do ChatbotService');
         }
         
-        echo json_encode($result);
+        $json = json_encode(ChatbotService::fixUtf8Recursive($result));
+        if ($json === false) {
+             echo json_encode(ChatbotService::fixUtf8Recursive([
+                 'success' => false,
+                 'error' => 'Erro interno ao codificar resposta (JSON error: ' . json_last_error_msg() . ')'
+             ]));
+        } else {
+             echo $json;
+        }
     } catch (\Exception $e) {
         // Log do erro
-        Toolbox::logError('Erro ao analisar ticket #' . $ticketId . ': ' . $e->getMessage());
+        Toolbox::logError("Erro ao analisar {$itemType} #" . $itemId . ': ' . $e->getMessage());
         
-        echo json_encode([
+        echo json_encode(ChatbotService::fixUtf8Recursive([
             'success' => false,
             'error' => 'Erro ao analisar chamado: ' . $e->getMessage()
-        ]);
+        ]));
     }
 }
 
@@ -121,11 +153,12 @@ function handleAnalyze()
  */
 function handleChat()
 {
-    $ticketId = (int)($_POST['ticket_id'] ?? 0);
+    $itemId = (int)($_POST['item_id'] ?? ($_POST['ticket_id'] ?? 0));
+    $itemType = $_POST['item_type'] ?? 'Ticket';
     $message = trim($_POST['message'] ?? '');
     
-    if ($ticketId <= 0) {
-        throw new \InvalidArgumentException('ID do ticket inválido');
+    if ($itemId <= 0) {
+        throw new \InvalidArgumentException("ID do {$itemType} inválido");
     }
     
     if (empty($message)) {
@@ -144,11 +177,21 @@ function handleChat()
         ]);
         return;
     }
+    
+    $provider = $_POST['provider'] ?? null;
 
-    $chatbot = new ChatbotService($ticketId);
+    $chatbot = new ChatbotService($itemId, null, $provider, $itemType);
     $result = $chatbot->processMessage($message);
     
-    echo json_encode($result);
+    $json = json_encode(ChatbotService::fixUtf8Recursive($result));
+    if ($json === false) {
+         echo json_encode(ChatbotService::fixUtf8Recursive([
+             'success' => false,
+             'error' => 'Erro interno ao codificar resposta chat (JSON error: ' . json_last_error_msg() . ')'
+         ]));
+    } else {
+         echo $json;
+    }
 }
 
 /**
@@ -166,7 +209,7 @@ function handleFeedback()
 
     $comment = Html::cleanPostForTextArea($comment);
 
-    $chatbot = new ChatbotService(0); // Ticket ID não necessário para feedback
+    $chatbot = new ChatbotService(0); // Item ID não necessário para feedback
     $success = $chatbot->saveFeedback($conversationId, $wasHelpful, $comment);
     
     echo json_encode([
@@ -181,15 +224,21 @@ function handleHistory()
 {
     global $DB;
     
-    $ticketId = (int)($_GET['ticket_id'] ?? 0);
+    $itemId = (int)($_GET['item_id'] ?? ($_GET['ticket_id'] ?? 0));
+    $itemType = $_GET['item_type'] ?? 'Ticket';
     
-    if ($ticketId <= 0) {
-        throw new \InvalidArgumentException('ID do ticket inválido');
+    if ($itemId <= 0) {
+        throw new \InvalidArgumentException("ID do {$itemType} inválido");
     }
 
     // Verificar permissão
-    $ticket = new Ticket();
-    if (!$ticket->getFromDB($ticketId) || !$ticket->canViewItem()) {
+    if ($itemType === 'Problem') {
+        $item = new \Problem();
+    } else {
+        $item = new \Ticket();
+    }
+
+    if (!$item->getFromDB($itemId) || !$item->canViewItem()) {
         http_response_code(403);
         echo json_encode([
             'success' => false,
@@ -201,7 +250,8 @@ function handleHistory()
     $iterator = $DB->request([
         'FROM' => 'glpi_chatbot_conversations',
         'WHERE' => [
-            'tickets_id' => $ticketId
+            'items_id' => $itemId,
+            'item_type' => $itemType
         ],
         'ORDER' => 'date_creation ASC'
     ]);
@@ -217,10 +267,10 @@ function handleHistory()
         ];
     }
 
-    echo json_encode([
+    echo json_encode(ChatbotService::fixUtf8Recursive([
         'success' => true,
         'history' => $history
-    ]);
+    ]));
 }
 
 /**
@@ -303,4 +353,12 @@ function checkRateLimit(string $action, int $maxRequests, int $timeWindow): bool
     } catch (\Exception $e) {
         return true; // Em caso de erro, permitir
     }
+}
+
+/**
+ * Corrige recursivamente o encoding para UTF-8 válido em arrays ou strings
+ */
+function fixUtf8Recursive($data)
+{
+    return ChatbotService::fixUtf8Recursive($data);
 }

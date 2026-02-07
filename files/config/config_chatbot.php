@@ -17,28 +17,27 @@
 $CFG_GLPI['chatbot_enabled'] = true;
 
 // API Key do Google Gemini
-$CFG_GLPI['gemini_api_key'] = '';
+$CFG_GLPI['gemini_api_key'] = 'AIzaSyBm48JCkj2QWlGhfotAl9tspA1Prr4jR4k';
 
 // Modelo do Gemini a usar
 // Opções disponíveis:
-// - 'gemini-2.0-flash-exp' (Gemini 2.5 Flash - Mais rápido e eficiente)
-// - 'gemini-1.5-pro-002' (Gemini 1.5 Pro - Mais poderoso)
+// - 'gemini-2.0-flash' (Gemini 2.0 Flash - Última geração)
 // - 'gemini-1.5-flash' (Gemini 1.5 Flash - Balanceado)
-$CFG_GLPI['gemini_model'] = 'gemini-2.0-flash-exp';
+$CFG_GLPI['gemini_model'] = 'gemini-2.0-flash';
 
 // =========================================
 // Escolha do Provedor de IA
 // =========================================
 // 'gemini' = Google Gemini (Cloud)
 // 'ollama' = Ollama (Local) - Padrão
-$CFG_GLPI['chatbot_provider'] = 'ollama';
+$CFG_GLPI['chatbot_provider'] = 'gemini';
 
 // =========================================
 // Configurações OLLAMA (Local)
 // =========================================
 // $CFG_GLPI['chatbot_provider'] = 'ollama'; // Default provider (ignored if dynamic switching matches valid config)
 $CFG_GLPI['ollama_host'] = 'http://localhost:11434';
-$CFG_GLPI['ollama_model'] = 'llama3';
+$CFG_GLPI['ollama_model'] = 'deepseek-r1:8b';
 
 
 // Número máximo de sugestões de FAQ
@@ -67,5 +66,6 @@ $CFG_GLPI['chatbot_system_prompt'] =
     "Quando possível, referencie artigos da base de conhecimento. " .
     "Use linguagem profissional mas acessível.";
 
-// Habilitar logs detalhados (apenas para debug)
+// Habilitar logs detalhados (logs salvos em files/_log/chatbot.log)
+// Recomendado manter FALSE em produção exceto para diagnóstico de problemas.
 $CFG_GLPI['chatbot_debug'] = false;
