@@ -7,24 +7,51 @@
  */
 
 define('GLPI_ROOT', '..');
+$isCLI = (php_sapi_name() === 'cli');
+
+function output($text, $level = 'info') {
+    global $isCLI;
+    if ($isCLI) {
+        $prefix = '';
+        switch ($level) {
+            case 'h1': $prefix = "\n=== "; break;
+            case 'h2': $prefix = "\n--- "; break;
+            case 'success': $prefix = "[OK] "; break;
+            case 'error': $prefix = "[ERROR] "; break;
+            case 'warning': $prefix = "[WARN] "; break;
+        }
+        echo $prefix . strip_tags($text) . ($level == 'h1' || $level == 'h2' ? " ===\n" : "\n");
+    } else {
+        switch ($level) {
+            case 'h1': echo "<h1>$text</h1>"; break;
+            case 'h2': echo "<h2>$text</h2>"; break;
+            case 'error': echo "<span style='color:red;'>[ERROR] $text</span><br>"; break;
+            default: echo "$text<br>"; break;
+        }
+    }
+}
 
 // Include GLPI context
 if (file_exists(GLPI_ROOT . '/inc/includes.php')) {
     include (GLPI_ROOT . '/inc/includes.php');
 } else {
-    die("Error: Could not find GLPI includes. Please make sure this folder is inside your GLPI root directory.\n");
+    output("Error: Could not find GLPI includes. Please make sure this folder is inside your GLPI root directory.", 'error');
+    exit(1);
 }
 
-// Check permissions
-if (!Session::haveRight('config', UPDATE)) {
-    die("Error: You need administrative privileges to install this plugin.\n");
+// Check permissions - Skip if CLI
+if (!$isCLI) {
+    if (!Session::checkLoginUser() || !Session::haveRight('config', UPDATE)) {
+        output("Error: You need administrative privileges to install this plugin.", 'error');
+        exit(1);
+    }
 }
 
-echo "<h1>GLPI Chatbot Installer</h1>";
-echo "<pre>";
+output("GLPI Chatbot Installer", 'h1');
+if (!$isCLI) echo "<pre>";
 
 // 1. Copy Files
-echo "<h2>1. Copying Files...</h2>";
+output("1. Copying Files...", 'h2');
 
 $files = [
     'files/src/AI/ChatbotService.php'       => 'src/AI/ChatbotService.php',
@@ -38,6 +65,8 @@ $files = [
     'files/css/chatbot.css'                 => 'css/chatbot.css',
     'files/front/dashboard_contracts.php'   => 'front/dashboard_contracts.php',
     'files/css/dashboard_contracts.css'     => 'css/dashboard_contracts.css',
+    'files/front/chatbot_feedback.php'      => 'front/chatbot_feedback.php',
+    'files/css/chatbot_feedback.css'        => 'css/chatbot_feedback.css',
 ];
 
 foreach ($files as $src => $dest) {
@@ -51,14 +80,14 @@ foreach ($files as $src => $dest) {
     }
     
     if (copy($src, $fullDest)) {
-        echo "OK\n";
+        output("OK", 'success');
     } else {
-        echo "FAILED\n";
+        output("FAILED", 'error');
     }
 }
 
 // 2. Database Migration
-echo "\n<h2>2. Database Migration...</h2>";
+output("2. Database Migration...", 'h2');
 
 $migrationFile = 'files/install/migrations/chatbot_tables.sql';
 if (file_exists($migrationFile)) {
@@ -87,26 +116,27 @@ if (file_exists($migrationFile)) {
             }
         }
     }
-    echo "Database tables checked/updated.\n";
+    output("Database tables checked/updated.", 'success');
     
 } else {
-    echo "Error: Migration file not found.\n";
+    output("Error: Migration file not found.", 'error');
 }
 
 
 // 3. Patching ticket.form.php
-echo "\n<h2>3. Patching ticket.form.php...</h2>";
+output("3. Patching ticket.form.php...", 'h2');
 
 $ticketFormPath = GLPI_ROOT . '/front/ticket.form.php';
 $content = file_get_contents($ticketFormPath);
 
 if ($content === false) {
-    die("Error: Could not read $ticketFormPath\n");
+    output("Error: Could not read $ticketFormPath", 'error');
+    exit(1);
 }
 
 // Check if already patched
 if (strpos($content, 'ChatbotService::isEnabled()') !== false) {
-    echo "ticket.form.php is already patched.\n";
+    output("ticket.form.php is already patched.", 'info');
 } else {
     // 3.1 Add Use Statement
     if (strpos($content, 'use Glpi\AI\ChatbotService;') === false) {
@@ -166,14 +196,57 @@ if (strpos($content, 'ChatbotService::isEnabled()') !== false) {
     
     if ($newContent !== $content) {
         file_put_contents($ticketFormPath, $newContent);
-        echo "Successfully patched ticket.form.php\n";
+        output("Successfully patched ticket.form.php", 'success');
     } else {
-        echo "Warning: Could not find anchor point ('$menus = [') in ticket.form.php. Manual patching required.\n";
+        output("Warning: Could not find anchor point ('\$menus = [') in ticket.form.php. Manual patching required.", 'warning');
     }
 }
 
-echo "</pre>";
-echo "<h3>Installation Complete!</h3>";
-echo "<p>Please verify that the chatbot icon appears on ticket pages.</p>";
+// 4. Patching problem.form.php
+output("4. Patching problem.form.php...", 'h2');
+
+$problemFormPath = GLPI_ROOT . '/front/problem.form.php';
+$content = file_get_contents($problemFormPath);
+
+if ($content === false) {
+    echo "Error: Could not read $problemFormPath\n";
+} else {
+    // Check if already patched
+    if (strpos($content, 'GLPIChatbot.init') !== false) {
+        output("problem.form.php is already patched.", 'info');
+    } else {
+        // We inject before Html::footer(); inside the else block of kanban
+        $search = 'Problem::displayFullPageForItem($_GET[\'id\'] ?? 0, $menus, $options);';
+        
+        $patch = $search . "\n\n" .
+                 "        // INJECTION: CHATBOT IA\n" .
+                 "        // =========================================\n" .
+                 "        \$chatbotConfig = \$CFG_GLPI['chatbot_enabled'] ?? 0;\n" .
+                 "        if (\$chatbotConfig && isset(\$_GET['id']) && \$_GET['id'] > 0) {\n" .
+                 "            \$versionTimestamp = time(); // Cache busting\n" .
+                 "            echo \"<link rel='stylesheet' type='text/css' href='../css/chatbot.css?v={\$versionTimestamp}'>\";\n" .
+                 "            echo \"<script src='../js/chatbot.js?v={\$versionTimestamp}'></script>\";\n" .
+                 "            echo \"<script>\n" .
+                 "                $(document).ready(function() {\n" .
+                 "                    GLPIChatbot.init(\" . (int)\$_GET['id'] . \", '../ajax/chatbot.php', 'Problem');\n" .
+                 "                });\n" .
+                 "            </script>\";\n" .
+                 "        }\n" .
+                 "        // =========================================";
+
+        $newContent = str_replace($search, $patch, $content);
+        
+        if ($newContent !== $content) {
+            file_put_contents($problemFormPath, $newContent);
+            output("Successfully patched problem.form.php", 'success');
+        } else {
+            output("Warning: Could not find anchor point in problem.form.php. Manual patching required.", 'warning');
+        }
+    }
+}
+
+if (!$isCLI) echo "</pre>";
+output("Installation Complete!", 'h1');
+output("Please verify that the chatbot icon appears on ticket pages.", 'info');
 
 ?>
